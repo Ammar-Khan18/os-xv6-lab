@@ -138,13 +138,35 @@ syscall(void)
   struct proc *p = myproc();
 
   num = p->trapframe->a7;
-  if (num >= 0 && num < 32) {    // sanity: avoid shifting by more than 31 on 32-bit
-    if ((p->sandbox_mask & (1u << num)) != 0) {
-      p->trapframe->a0 = -1;     // syscall returns -1 to user
+
+  if (num >= 0 && num < NELEM(syscalls)) {
+  if (p->sandbox_mask & (1 << num)) {
+    /* If blocked syscall is open or exec, allow it only when pathname equals allowed_path */
+    if (num == SYS_open || num == SYS_exec) {
+      char path[MAXPATH];
+      if (argstr(0, path, sizeof(path)) >= 0) {
+        if (strncmp(path, p->allowed_path, sizeof(p->allowed_path)) == 0) {
+          /* pathname matches allowed_path -> allow syscall */
+          goto allowed_syscall;
+        } else {
+          /* pathname doesn't match -> reject */
+          p->trapframe->a0 = -1;
+          return;
+        }
+      } else {
+        /* Could not fetch pathname argument -> reject */
+        p->trapframe->a0 = -1;
+        return;
+      }
+    } else {
+      /* other syscalls are blocked */
+      p->trapframe->a0 = -1;
       return;
     }
   }
+}
 
+allowed_syscall:
   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
     // Use num to lookup the system call function for num, call it,
     // and store its return value in p->trapframe->a0
