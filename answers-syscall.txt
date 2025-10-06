@@ -1,0 +1,16 @@
+Q1
+usertrap()
+Q2
+$2 = 0xf
+executing open() system call
+Q3
+$3 = 0x200000022
+the previous mode was user mode. The trap occurred because a user process executed a system call (ecall), causing the CPU to switch into supervisor mode.
+Q4
+0x80001cee: lw a3, 0(zero)
+The register corresponds to the variable num is 
+Q5
+Load Page Fault
+Q6
+name = init
+pid = 1
