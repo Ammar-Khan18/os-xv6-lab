@@ -272,11 +272,12 @@ kfork(void)
     return -1;
   }
   np->sz = p->sz;
-
+   // Copy interpose mask from parent to child.
+  np->interpose_mask = p->interpose_mask;
+ // Copy the allowed path to the child safely (xv6 strncpy).
+  strncpy(np->allowed_path, p->allowed_path, sizeof(np->allowed_path));
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
-  np->sandbox_mask = p->sandbox_mask;
-  safestrcpy(np->allowed_path, p->allowed_path, MAXPATH);
 
   // Cause fork to return 0 in the child.
   np->trapframe->a0 = 0;
@@ -674,7 +675,6 @@ procdump(void)
   };
   struct proc *p;
   char *state;
-
   printf("\n");
   for(p = proc; p < &proc[NPROC]; p++){
     if(p->state == UNUSED)
