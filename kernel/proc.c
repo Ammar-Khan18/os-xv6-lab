@@ -33,7 +33,7 @@ void
 proc_mapstacks(pagetable_t kpgtbl)
 {
   struct proc *p;
-  
+
   for(p = proc; p < &proc[NPROC]; p++) {
     char *pa = kalloc();
     if(pa == 0)
@@ -106,6 +106,18 @@ allocpid()
 // If found, initialize state required to run in the kernel,
 // and return with p->lock held.
 // If there are no free procs, or a memory allocation fails, return 0.
+
+// Replace the existing allocproc with this safe version
+
+// Safe allocproc replacement — paste whole function into kernel/proc.c
+
+// Look in the process table for an UNUSED proc.
+// If found, change state to USED.
+// Returns with p->lock held.
+
+// Look in the process table for an UNUSED proc.
+// If found, change state to USED.
+// Returns with p->lock held.
 static struct proc*
 allocproc(void)
 {
@@ -148,6 +160,7 @@ found:
 
   return p;
 }
+
 
 // free a proc structure and the data hanging from it,
 // including user pages.

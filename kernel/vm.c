@@ -530,7 +530,6 @@ ismapped(pagetable_t pagetable, uint64 va) {
 }
 
 
-
 #ifdef LAB_PGTBL
 pte_t*
 pgpte(pagetable_t pagetable, uint64 va) {
