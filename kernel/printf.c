@@ -134,6 +134,23 @@ printf(char *fmt, ...)
 }
 
 void
+backtrace(void)
+{
+    uint64 fp = r_fp();
+    uint64 stack_bottom = PGROUNDDOWN(fp);
+
+    printf("backtrace:\n");
+    while(fp >= stack_bottom){
+        uint64 ra = *(uint64 *)(fp - 8);
+        printf("0x%x\n", (uint)ra);       // use %x
+        uint64 prev_fp = *(uint64 *)(fp - 16);
+        if(prev_fp == 0 || prev_fp < stack_bottom)
+            break;
+        fp = prev_fp;
+    }
+}
+
+void
 panic(char *s)
 {
   panicking = 1;
