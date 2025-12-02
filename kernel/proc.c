@@ -15,10 +15,12 @@ struct proc *initproc;
 int nextpid = 1;
 struct spinlock pid_lock;
 
+// MLFQ scheduler - linked list implementation
 struct {
   struct proc *head;           // Head of queue at this level
   struct proc *tail;           // Tail of queue at this level
 } mlfq[MLFQ_LEVELS];           // 4 queues, one per level
+
 
 extern void forkret(void);
 static void freeproc(struct proc *p);
@@ -56,6 +58,8 @@ procinit(void)
   
   initlock(&pid_lock, "nextpid");
   initlock(&wait_lock, "wait_lock");
+  
+  // Initialize MLFQ queues
   for(int i = 0; i < MLFQ_LEVELS; i++) {
     mlfq[i].head = 0;
     mlfq[i].tail = 0;
@@ -141,10 +145,11 @@ found:
     return 0;
   }
 
+  // Initialize MLFQ fields
   p->queue_level = 0;           // Start at highest priority queue
   p->ticks_used = 0;
   p->next_proc = 0;             // Not in any queue yet
-  p->quantum = L0; 
+  p->quantum = L0;              // Time quantum for queue level 0
 
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
@@ -163,6 +168,7 @@ found:
   return p;
 }
 
+// Helper function: Get time quantum for a given queue level
 static int
 get_quantum(int level)
 {
@@ -182,15 +188,16 @@ mlfq_enqueue(struct proc *p, int level)
 {
   if(level < 0 || level >= MLFQ_LEVELS)
     return;
-
+  
   // Update queue level and quantum only if changing queues
   if(p->queue_level != level) {
     p->queue_level = level;
     p->quantum = get_quantum(level);
     p->ticks_used = 0;  // Reset ticks only when changing queues
   }
-
+  
   p->next_proc = 0;
+  
   // Add to end of queue (FIFO within level)
   if(mlfq[level].tail == 0) {
     // Queue is empty
@@ -203,6 +210,29 @@ mlfq_enqueue(struct proc *p, int level)
   }
 }
 
+// MLFQ function: Remove and return first process from specified queue level
+// Returns NULL if queue is empty
+// static struct proc*
+// mlfq_dequeue(int level)
+// {
+//   if(level < 0 || level >= MLFQ_LEVELS)
+//     return 0;
+  
+//   struct proc *p = mlfq[level].head;
+//   if(p == 0)
+//     return 0;  // Queue is empty
+  
+//   // Remove from head
+//   mlfq[level].head = p->next_proc;
+//   if(mlfq[level].head == 0) {
+//     // Queue is now empty
+//     mlfq[level].tail = 0;
+//   }
+  
+//   p->next_proc = 0;
+//   return p;
+// }
+
 // MLFQ function: Remove process from its current queue
 // Caller must hold p->lock
 static void
@@ -211,8 +241,10 @@ mlfq_remove(struct proc *p)
   int level = p->queue_level;
   if(level < 0 || level >= MLFQ_LEVELS)
     return;
+  
   struct proc *curr = mlfq[level].head;
   struct proc *prev = 0;
+  
   // Find process in queue
   while(curr != 0) {
     if(curr == p) {
@@ -223,10 +255,12 @@ mlfq_remove(struct proc *p)
       } else {
         prev->next_proc = curr->next_proc;
       }
+      
       // Update tail if needed
       if(mlfq[level].tail == p) {
         mlfq[level].tail = prev;
-      }  
+      }
+      
       p->next_proc = 0;
       return;
     }
@@ -240,9 +274,11 @@ static struct proc*
 mlfq_next(void)
 {
   struct proc *p;
+  
   // Check queues from highest to lowest priority
   for(int level = 0; level < MLFQ_LEVELS; level++) {
     p = mlfq[level].head;
+    
     // Scan queue for RUNNABLE process
     while(p != 0) {
       acquire(&p->lock);
@@ -255,6 +291,7 @@ mlfq_next(void)
       p = p->next_proc;
     }
   }
+  
   return 0;  // No runnable process found
 }
 
@@ -272,23 +309,26 @@ mlfq_demote(struct proc *p)
 
 // MLFQ function: Boost all processes to highest priority level
 // Called periodically to prevent starvation
-
 void
 mlfq_boost(void)
 {
   struct proc *p;
+  
   // Iterate through all processes
   for(p = proc; p < &proc[NPROC]; p++) {
     acquire(&p->lock);
+    
     if(p->state == RUNNABLE || p->state == RUNNING) {
       // Remove from current queue if in one
       if(p->queue_level >= 0 && p->queue_level < MLFQ_LEVELS) {
         mlfq_remove(p);
       }
+      
       // Reset to highest priority
       p->queue_level = 0;
       p->quantum = get_quantum(0);
       p->ticks_used = 0;
+      
       // Re-enqueue if RUNNABLE (RUNNING processes will be enqueued on next yield)
       if(p->state == RUNNABLE) {
         // Just add to queue, don't call mlfq_enqueue since we already set params
@@ -302,6 +342,7 @@ mlfq_boost(void)
         }
       }
     }
+    
     release(&p->lock);
   }
 }
@@ -385,6 +426,7 @@ userinit(void)
 
   p->state = RUNNABLE;
   mlfq_enqueue(p, 0);  // Add to highest priority queue
+
   release(&p->lock);
 }
 
@@ -454,7 +496,7 @@ kfork(void)
 
   acquire(&np->lock);
   np->state = RUNNABLE;
-  mlfq_enqueue(p, 0);  // Add to highest priority queue
+  mlfq_enqueue(np, 0);  // Add new process to highest priority queue
   release(&np->lock);
 
   return pid;
@@ -599,12 +641,13 @@ scheduler(void)
       p->state = RUNNING;
       c->proc = p;
       swtch(&c->context, &p->context);
+
       // Process is done running for now.
       // It should have changed its p->state before coming back.
       c->proc = 0;
       release(&p->lock);
     } else {
-      // nothing to run; stop running on this core until an interrupt.
+      // No runnable process; stop running on this core until an interrupt.
       asm volatile("wfi");
     }
   }
@@ -643,12 +686,15 @@ yield(void)
 {
   struct proc *p = myproc();
   acquire(&p->lock);
+  
   // Check if process used full quantum - if so, demote
   if(p->ticks_used >= p->quantum) {
     mlfq_demote(p);
   }
+  
   p->state = RUNNABLE;
   mlfq_enqueue(p, p->queue_level);  // Re-queue at current (possibly demoted) level
+  
   sched();
   release(&p->lock);
 }
@@ -733,7 +779,7 @@ wakeup(void *chan)
       acquire(&p->lock);
       if(p->state == SLEEPING && p->chan == chan) {
         p->state = RUNNABLE;
-        mlfq_enqueue(p, p->queue_level);
+        mlfq_enqueue(p, p->queue_level);  // Re-queue at current level (no demotion on I/O)
       }
       release(&p->lock);
     }
