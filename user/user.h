@@ -2,6 +2,15 @@
 
 struct stat;
 
+struct procinfo {
+  int pid;
+  int queue_level;
+  int ticks_used;
+  int quantum;
+  char name[16];
+  int state;
+};
+
 // system calls
 int fork(void);
 int exit(int) __attribute__((noreturn));
@@ -47,3 +56,4 @@ void printf(const char*, ...) __attribute__ ((format (printf, 1, 2)));
 // umalloc.c
 void* malloc(uint);
 void free(void*);
+int getprocinfo(int pid, struct procinfo* pinfo);

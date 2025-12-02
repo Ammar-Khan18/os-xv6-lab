@@ -199,7 +199,8 @@ UPROGS=\
 	$U/_sixfive\
 	$U/_find\
 	$U/_uptime\
-
+	$U/_proctest\
+	$U/_mlfqtest\
 
 
 
